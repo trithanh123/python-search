@@ -29,7 +29,8 @@ def get_embedding(text: str, task_type: str = "retrieval_document") -> list[floa
         result = genai.embed_content(
             model="models/gemini-embedding-2",
             content=text,
-            task_type=task_type
+            task_type=task_type,
+            output_dimensionality=768
         )
         return result['embedding']
     except Exception as e:
@@ -41,7 +42,8 @@ def get_embedding_batch(texts: list[str]) -> list[list[float]]:
         result = genai.embed_content(
             model="models/gemini-embedding-2",
             content=texts,
-            task_type="retrieval_document"
+            task_type="retrieval_document",
+            output_dimensionality=768
         )
         return result['embedding']
     except Exception as e:
