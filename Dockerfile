@@ -17,8 +17,6 @@ COPY requirements.txt .
 # Install python dependencies without cache to save disk space
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Pre-download the model during build time so it doesn't download on every startup
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('keepitreal/vietnamese-sbert')"
 
 COPY . .
 

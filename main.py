@@ -9,7 +9,7 @@ os.environ["USE_TORCH"] = "1"
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from sentence_transformers import SentenceTransformer
+import google.generativeai as genai
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Filter, FieldCondition, Range, MatchValue,
@@ -21,8 +21,25 @@ QDRANT_URL     = os.getenv("QDRANT_URL")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 COLLECTION     = os.getenv("QDRANT_COLLECTION", "san_pham")
 
-print("Dang load model vietnamese-sbert...")
-model  = SentenceTransformer("keepitreal/vietnamese-sbert")
+print("Cau hinh Gemini API...")
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
+def get_embedding(text: str, task_type: str = "retrieval_document") -> list[float]:
+    result = genai.embed_content(
+        model="models/text-embedding-004",
+        content=text,
+        task_type=task_type
+    )
+    return result['embedding']
+
+def get_embedding_batch(texts: list[str]) -> list[list[float]]:
+    result = genai.embed_content(
+        model="models/text-embedding-004",
+        content=texts,
+        task_type="retrieval_document"
+    )
+    return result['embedding']
+
 qdrant = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
 print("Service san sang!")
 
@@ -157,7 +174,7 @@ def search(req: SearchRequest):
     parsed       = parse_query(req.query)
     semantic     = parsed["semantic"]
     filters      = parsed["filters"]
-    query_vector = model.encode(semantic).tolist()
+    query_vector = get_embedding(semantic, task_type="retrieval_query")
     qdrant_filter = build_qdrant_filter(filters, req.branch_id)
 
     hits = qdrant.search(
@@ -181,7 +198,7 @@ def search(req: SearchRequest):
 def upsert(req: UpsertRequest):
     data   = req.dict()
     text   = make_product_text(data)
-    vector = model.encode(text).tolist()
+    vector = get_embedding(text, task_type="retrieval_document")
 
     payload = {
         "masp"          : req.masp,
@@ -209,6 +226,39 @@ def upsert(req: UpsertRequest):
         "text_used": text,
     }
 
+
+class UpsertBatchRequest(BaseModel):
+    products: list[UpsertRequest]
+
+@app.post("/upsert-batch")
+def upsert_batch(req: UpsertBatchRequest):
+    if not req.products:
+        return {"status": "success", "message": "No products to upsert"}
+        
+    texts = [make_product_text(p.dict()) for p in req.products]
+    vectors = get_embedding_batch(texts)
+    
+    points = []
+    for p, vector in zip(req.products, vectors):
+        payload = {
+            "masp"          : p.masp,
+            "tensp"         : p.tensp,
+            "gia"           : p.gia,
+            "ten_danhmuc"   : p.ten_danhmuc,
+            "brand"         : (p.specifications or {}).get("brand", ""),
+            "specifications": p.specifications or {},
+        }
+        points.append(PointStruct(id=p.id, vector=vector, payload=payload))
+        
+    qdrant.upsert(
+        collection_name=COLLECTION,
+        points=points,
+    )
+    
+    return {
+        "status" : "success",
+        "message": f"Đã upsert embedding cho {len(req.products)} sản phẩm",
+    }
 
 @app.delete("/delete/{product_id}")
 def delete_product(product_id: int):
@@ -275,7 +325,7 @@ def ai_build_pc(req: AiBuildRequest):
         budget = 30_000_000
             
     semantic = parsed["semantic"]
-    vector = model.encode(semantic).tolist()
+    vector = get_embedding(semantic, task_type="retrieval_query")
 
     # Detect explicitly mentioned CPU/VGA models
     pinned_cpu_kw = _CPU_PATTERN.search(query)
