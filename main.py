@@ -27,7 +27,7 @@ genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 def get_embedding(text: str, task_type: str = "retrieval_document") -> list[float]:
     try:
         result = genai.embed_content(
-            model="models/text-embedding-004",
+            model="models/embedding-001",
             content=text,
             task_type=task_type
         )
@@ -39,7 +39,7 @@ def get_embedding(text: str, task_type: str = "retrieval_document") -> list[floa
 def get_embedding_batch(texts: list[str]) -> list[list[float]]:
     try:
         result = genai.embed_content(
-            model="models/text-embedding-004",
+            model="models/embedding-001",
             content=texts,
             task_type="retrieval_document"
         )
@@ -185,7 +185,7 @@ def search(req: SearchRequest):
     try:
         query_vector = get_embedding(semantic, task_type="retrieval_query")
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
     qdrant_filter = build_qdrant_filter(filters, req.branch_id)
 
     hits = qdrant.search(
@@ -250,7 +250,7 @@ def upsert_batch(req: UpsertBatchRequest):
     try:
         vectors = get_embedding_batch(texts)
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
     
     points = []
     for p, vector in zip(req.products, vectors):
@@ -339,7 +339,10 @@ def ai_build_pc(req: AiBuildRequest):
         budget = 30_000_000
             
     semantic = parsed["semantic"]
-    vector = get_embedding(semantic, task_type="retrieval_query")
+    try:
+        vector = get_embedding(semantic, task_type="retrieval_query")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
     # Detect explicitly mentioned CPU/VGA models
     pinned_cpu_kw = _CPU_PATTERN.search(query)
