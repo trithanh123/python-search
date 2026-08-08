@@ -25,20 +25,28 @@ print("Cau hinh Gemini API...")
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 def get_embedding(text: str, task_type: str = "retrieval_document") -> list[float]:
-    result = genai.embed_content(
-        model="models/text-embedding-004",
-        content=text,
-        task_type=task_type
-    )
-    return result['embedding']
+    try:
+        result = genai.embed_content(
+            model="models/text-embedding-004",
+            content=text,
+            task_type=task_type
+        )
+        return result['embedding']
+    except Exception as e:
+        print("Embedding error:", repr(e))
+        raise HTTPException(status_code=500, detail=f"Gemini API Error: {repr(e)}")
 
 def get_embedding_batch(texts: list[str]) -> list[list[float]]:
-    result = genai.embed_content(
-        model="models/text-embedding-004",
-        content=texts,
-        task_type="retrieval_document"
-    )
-    return result['embedding']
+    try:
+        result = genai.embed_content(
+            model="models/text-embedding-004",
+            content=texts,
+            task_type="retrieval_document"
+        )
+        return result['embedding']
+    except Exception as e:
+        print("Embedding batch error:", repr(e))
+        raise HTTPException(status_code=500, detail=f"Gemini API Error: {repr(e)}")
 
 qdrant = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
 print("Service san sang!")
@@ -174,7 +182,10 @@ def search(req: SearchRequest):
     parsed       = parse_query(req.query)
     semantic     = parsed["semantic"]
     filters      = parsed["filters"]
-    query_vector = get_embedding(semantic, task_type="retrieval_query")
+    try:
+        query_vector = get_embedding(semantic, task_type="retrieval_query")
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
     qdrant_filter = build_qdrant_filter(filters, req.branch_id)
 
     hits = qdrant.search(
@@ -236,7 +247,10 @@ def upsert_batch(req: UpsertBatchRequest):
         return {"status": "success", "message": "No products to upsert"}
         
     texts = [make_product_text(p.dict()) for p in req.products]
-    vectors = get_embedding_batch(texts)
+    try:
+        vectors = get_embedding_batch(texts)
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
     
     points = []
     for p, vector in zip(req.products, vectors):
