@@ -12,7 +12,7 @@ from qdrant_client.models import Distance, VectorParams, PointStruct
 load_dotenv()
 QDRANT_URL        = os.getenv("QDRANT_URL")
 QDRANT_API_KEY    = os.getenv("QDRANT_API_KEY")
-SUPABASE_DB_URL   = os.getenv("SUPABASE_DB_URL")
+POSTGRES_DB_URL   = os.getenv("POSTGRES_DB_URL")
 COLLECTION        = os.getenv("QDRANT_COLLECTION", "san_pham")
 VECTOR_SIZE       = int(os.getenv("VECTOR_SIZE", 768))
 print(" Đang load model vietnamese-sbert...")
@@ -88,7 +88,7 @@ def fetch_products(conn) -> list[dict]:
 
 def index_all():
     print(" Kết nối database...")
-    conn = psycopg2.connect(SUPABASE_DB_URL)
+    conn = psycopg2.connect(POSTGRES_DB_URL)
     print(" Kết nối database thành công!")
     print(" Kết nối Qdrant Cloud...")
     qdrant = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY, timeout=60)
