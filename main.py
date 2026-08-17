@@ -128,7 +128,6 @@ def parse_query(query: str) -> dict:
             filters["brand"] = brand
             break
 
-    # Detect GPU/VGA model (RTX 3060, GTX 1660, RX 6600...) để rerank phía Laravel
     _GPU_DETECT = re.compile(
         r'\b(rtx\s*\d{3,4}(?:\s*ti)?(?:\s*super)?'
         r'|gtx\s*\d{3,4}(?:\s*ti)?'
@@ -138,9 +137,7 @@ def parse_query(query: str) -> dict:
     )
     m_gpu = _GPU_DETECT.search(query)
     if m_gpu:
-        # Chuẩn hóa: bỏ khoảng trắng thừa, uppercase → "RTX 3060", "GTX 1660 Ti"
         filters["gpu_keyword"] = re.sub(r'\s+', ' ', m_gpu.group(1).upper().strip())
-
     synonyms = {
         r'\bmáy tính để bàn\b': 'PC desktop máy tính để bàn',
         r'\bmáy tính\b': 'PC máy tính',
@@ -219,6 +216,7 @@ def search(req: SearchRequest):
         query_filter=qdrant_filter,
         limit=req.top_k,
         with_payload=False,
+        score_threshold=0.55,   # Bỏ kết quả có độ tương đồng thấp (gibberish, ký tự lạ)
     )
     results = [{"id": hit.id, "score": round(hit.score, 4)} for hit in hits]
 
