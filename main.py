@@ -111,13 +111,23 @@ def parse_query(query: str) -> dict:
             filters["gia_lte"] = center + 5_000_000
             semantic = re.sub(pattern_range, "", semantic, flags=re.I).strip()
 
+    if "gia_lte" not in filters and "gia_gte" not in filters:
+        pattern_bare_price = r'(?:giá|gia)\s+(\d+)(?!\s*(?:tri[eệ]u|tr[^a-zA-Z]|\d))'
+        m = re.search(pattern_bare_price, query, re.I)
+        if m:
+            val = int(m.group(1))
+            if 1 <= val <= 999:  
+                center = val * 1_000_000
+                filters["gia_gte"] = max(0, center - 5_000_000)
+                filters["gia_lte"] = center + 5_000_000
+                semantic = re.sub(pattern_bare_price, "", semantic, flags=re.I).strip()
+
     brands = ["ASUS", "MSI", "Dell", "HP", "Lenovo", "Acer", "Apple", "Gigabyte", "Samsung", "LG"]
     for brand in brands:
         if re.search(brand, query, re.I):
             filters["brand"] = brand
             break
 
-    # Thay thế từ đồng nghĩa để AI hiểu tốt hơn
     synonyms = {
         r'\bmáy tính để bàn\b': 'PC desktop máy tính để bàn',
         r'\bmáy tính\b': 'PC máy tính',
