@@ -128,6 +128,19 @@ def parse_query(query: str) -> dict:
             filters["brand"] = brand
             break
 
+    # Detect GPU/VGA model (RTX 3060, GTX 1660, RX 6600...) để rerank phía Laravel
+    _GPU_DETECT = re.compile(
+        r'\b(rtx\s*\d{3,4}(?:\s*ti)?(?:\s*super)?'
+        r'|gtx\s*\d{3,4}(?:\s*ti)?'
+        r'|rx\s*\d{3,4}(?:\s*xt)?'
+        r'|arc\s*[a-z]?\d{3})\b',
+        re.I
+    )
+    m_gpu = _GPU_DETECT.search(query)
+    if m_gpu:
+        # Chuẩn hóa: bỏ khoảng trắng thừa, uppercase → "RTX 3060", "GTX 1660 Ti"
+        filters["gpu_keyword"] = re.sub(r'\s+', ' ', m_gpu.group(1).upper().strip())
+
     synonyms = {
         r'\bmáy tính để bàn\b': 'PC desktop máy tính để bàn',
         r'\bmáy tính\b': 'PC máy tính',
@@ -139,7 +152,7 @@ def parse_query(query: str) -> dict:
         semantic = re.sub(pattern, replacement, semantic, flags=re.I)
 
     semantic = re.sub(r'\s+', ' ', semantic).strip()
-    # Nếu sau khi strip, semantic quá ngắn (<= 2 ký tự) thì fallback về query gốc
+   
     if not semantic or len(semantic) <= 2:
         semantic = query
     return {"semantic": semantic, "filters": filters}
