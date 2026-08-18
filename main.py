@@ -216,7 +216,7 @@ def search(req: SearchRequest):
         query_filter=qdrant_filter,
         limit=req.top_k,
         with_payload=False,
-        score_threshold=0.72,   # Bỏ kết quả có độ tương đồng thấp (gibberish, ký tự lạ, sản phẩm không tồn tại)
+        score_threshold=0.6,   # Bỏ kết quả có độ tương đồng thấp (gibberish, ký tự lạ, sản phẩm không tồn tại)
     )
     results = [{"id": hit.id, "score": round(hit.score, 4)} for hit in hits]
 
