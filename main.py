@@ -193,8 +193,8 @@ def make_product_text(data: dict) -> str:
 
 
 @app.get("/health")
+@app.head("/health")
 def health():
-   
     return {"status": "ok", "service": "ToiYeuPC Search"}
 
 
