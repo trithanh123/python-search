@@ -138,27 +138,24 @@ def parse_query(query: str) -> dict:
     if m_gpu:
         filters["gpu_keyword"] = re.sub(r'\s+', ' ', m_gpu.group(1).upper().strip())
 
-    # Nhận diện CPU
     _CPU_DETECT = re.compile(r'\b(intel(?:\s*core\s*i[3579])?|amd(?:\s*ryzen\s*[3579])?|core\s*i[3579]|ryzen\s*[3579])\b', re.I)
     m_cpu = _CPU_DETECT.search(query)
     if m_cpu:
         filters["cpu_keyword"] = re.sub(r'\s+', ' ', m_cpu.group(1).upper().strip())
 
-    # Nhận diện RAM
+   
     _RAM_DETECT = re.compile(r'\b(?:ram\s*)?(8|16|32|64|128)\s*(?:gb|g)\b|\b(?:ram\s+)(8|16|32|64|128)\b', re.I)
     m_ram = _RAM_DETECT.search(query)
     if m_ram:
         ram_val = m_ram.group(1) or m_ram.group(2)
         filters["ram_keyword"] = f"{ram_val}GB"
 
-    # Nhận diện Nguồn (PSU)
     _PSU_DETECT = re.compile(r'\b(?:ngu[ồo]n\s*)?(\d{3,4})\s*w\b|\bngu[ồo]n\s*(\d{3,4})\b', re.I)
     m_psu = _PSU_DETECT.search(query)
     if m_psu:
         psu_val = m_psu.group(1) or m_psu.group(2)
         filters["psu_keyword"] = f"{psu_val}W"
 
-    # Nhận diện Mainboard
     _MAIN_DETECT = re.compile(r'\b(?:mainboard|main|bo m[ạa]ch ch[ủu])\s+([a-z0-9\-]+)\b', re.I)
     m_main = _MAIN_DETECT.search(query)
     if m_main:
@@ -351,10 +348,9 @@ _VGA_PATTERN = re.compile(
 )
 
 def _search_by_keyword(keyword: str, comp_type: str, limit: int = 5) -> list:
-    """Search Qdrant for products matching keyword in name, filtered by component type."""
     try:
         results = qdrant.scroll(
-            collection_name=COLLECTION,
+            collection_name=COLLECTION, 
             scroll_filter=Filter(must=[
                 FieldCondition(key="specifications.loai", match=MatchValue(value=comp_type))
             ]),
@@ -373,11 +369,11 @@ def _search_by_keyword(keyword: str, comp_type: str, limit: int = 5) -> list:
     except Exception:
         return []
 
+
 @app.post("/ai-build-pc")
 def ai_build_pc(req: AiBuildRequest):
     query = req.query
     parsed = parse_query(query)
-    
     
     m = re.search(r'(\d+)\s*(?:tri[eệ]u|tr)', query, re.I)
     if m:
@@ -391,16 +387,23 @@ def ai_build_pc(req: AiBuildRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    pinned_cpu_kw = _CPU_PATTERN.search(query)
-    pinned_vga_kw = _VGA_PATTERN.search(query)
+    filters = parsed.get("filters", {})
     
+    pin_mapping = {
+        "CPU": "cpu_keyword",
+        "VGA": "gpu_keyword",
+        "RAM": "ram_keyword",
+        "PSU": "psu_keyword",
+        "Mainboard": "main_keyword"
+    }
+
     components = ["CPU", "Mainboard", "VGA", "RAM", "SSD", "PSU", "Case"]
     components_by_type = {}
     
     for comp_type in components:
         conditions = [FieldCondition(key="specifications.loai", match=MatchValue(value=comp_type))]
-        if "brand" in parsed["filters"]:
-            conditions.append(FieldCondition(key="brand", match=MatchValue(value=parsed["filters"]["brand"])))
+        if "brand" in filters:
+            conditions.append(FieldCondition(key="brand", match=MatchValue(value=filters["brand"])))
             
         qdrant_filter = Filter(must=conditions)
         
@@ -415,17 +418,10 @@ def ai_build_pc(req: AiBuildRequest):
         except Exception:
             semantic_results = []
 
-
-        if comp_type == "CPU" and pinned_cpu_kw:
-            kw = pinned_cpu_kw.group(1)
-            pinned_results = _search_by_keyword(kw, "CPU")
-            if pinned_results:
-                existing_masps = {p.get('masp') for p in pinned_results}
-                semantic_results = pinned_results + [p for p in semantic_results if p.get('masp') not in existing_masps]
-
-        elif comp_type == "VGA" and pinned_vga_kw:
-            kw = pinned_vga_kw.group(1)
-            pinned_results = _search_by_keyword(kw, "VGA")
+        kw_key = pin_mapping.get(comp_type)
+        if kw_key and kw_key in filters:
+            kw = filters[kw_key]
+            pinned_results = _search_by_keyword(kw, comp_type)
             if pinned_results:
                 existing_masps = {p.get('masp') for p in pinned_results}
                 semantic_results = pinned_results + [p for p in semantic_results if p.get('masp') not in existing_masps]
@@ -434,10 +430,9 @@ def ai_build_pc(req: AiBuildRequest):
 
     
     pinned_for_builder = {}
-    if pinned_cpu_kw and components_by_type.get('CPU'):
-        pinned_for_builder['CPU'] = 1   
-    if pinned_vga_kw and components_by_type.get('VGA'):
-        pinned_for_builder['VGA'] = 1   
+    for comp_type, kw_key in pin_mapping.items():
+        if kw_key in filters and components_by_type.get(comp_type):
+            pinned_for_builder[comp_type] = 1
 
     best_build = find_best_pc_build(budget, components_by_type, pinned=pinned_for_builder)
     
