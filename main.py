@@ -75,10 +75,10 @@ def parse_query(query: str) -> dict:
     filters  = {}
     semantic = query
 
-    # Đơn vị giá: "triệu", "trieu", hoặc "tr" (standalone - không phải trong "triệu/trieu")
+   
     UNIT = r'(?:tri[eệ]u|tr(?![a-zA-ZàáâãèéêìíòóôõùúýăđơưÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚÝĂĐƠƯàáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ]))'
 
-    # Bước 1: parse khoảng "từ A đến B triệu" -> gia_gte và gia_lte
+  
     pattern_between = r'(?:từ|tu)?\s*(\d+)\s*(?:đến|den|-|tới|toi)\s*(\d+)\s*' + UNIT
     m_between = re.search(pattern_between, query, re.I)
     if m_between:
@@ -86,22 +86,21 @@ def parse_query(query: str) -> dict:
         filters["gia_lte"] = int(m_between.group(2)) * 1_000_000
         semantic = re.sub(pattern_between, "", semantic, flags=re.I).strip()
 
-    # Bước 2: parse "dưới/tối đa/không quá X triệu" → gia_lte
+   
     pattern_lte = r'(?:gia\s*)?(?:duoi|toi da|khong qua|dưới|tối đa|không quá)\s*(\d+)\s*' + UNIT
     m = re.search(pattern_lte, query, re.I)
     if m and "gia_lte" not in filters:
         filters["gia_lte"] = int(m.group(1)) * 1_000_000
         semantic = re.sub(pattern_lte, "", semantic, flags=re.I).strip()
 
-    # Bước 2: parse "trên/từ/tối thiểu X triệu" → gia_gte
+   
     pattern_gte = r'(?:gia\s*)?(?:tren|tu|toi thieu|trên|từ|tối thiểu)\s*(\d+)\s*' + UNIT
     m = re.search(pattern_gte, query, re.I)
     if m:
         filters["gia_gte"] = int(m.group(1)) * 1_000_000
         semantic = re.sub(pattern_gte, "", semantic, flags=re.I).strip()
 
-    # Bước 3: parse số đơn "khoảng X triệu" → ±5tr
-    # Chỉ áp dụng nếu CHƯA có filter giá từ bước 1 và 2 (tránh override)
+
     if "gia_lte" not in filters and "gia_gte" not in filters:
         pattern_range = r'(?:gia\s*|khoang\s*|giá\s*|khoảng\s*)(\d+)\s*(?:' + UNIT + r'|củ)'
         m = re.search(pattern_range, query, re.I)
@@ -138,6 +137,33 @@ def parse_query(query: str) -> dict:
     m_gpu = _GPU_DETECT.search(query)
     if m_gpu:
         filters["gpu_keyword"] = re.sub(r'\s+', ' ', m_gpu.group(1).upper().strip())
+
+    # Nhận diện CPU
+    _CPU_DETECT = re.compile(r'\b(intel(?:\s*core\s*i[3579])?|amd(?:\s*ryzen\s*[3579])?|core\s*i[3579]|ryzen\s*[3579])\b', re.I)
+    m_cpu = _CPU_DETECT.search(query)
+    if m_cpu:
+        filters["cpu_keyword"] = re.sub(r'\s+', ' ', m_cpu.group(1).upper().strip())
+
+    # Nhận diện RAM
+    _RAM_DETECT = re.compile(r'\b(?:ram\s*)?(8|16|32|64|128)\s*(?:gb|g)\b|\b(?:ram\s+)(8|16|32|64|128)\b', re.I)
+    m_ram = _RAM_DETECT.search(query)
+    if m_ram:
+        ram_val = m_ram.group(1) or m_ram.group(2)
+        filters["ram_keyword"] = f"{ram_val}GB"
+
+    # Nhận diện Nguồn (PSU)
+    _PSU_DETECT = re.compile(r'\b(?:ngu[ồo]n\s*)?(\d{3,4})\s*w\b|\bngu[ồo]n\s*(\d{3,4})\b', re.I)
+    m_psu = _PSU_DETECT.search(query)
+    if m_psu:
+        psu_val = m_psu.group(1) or m_psu.group(2)
+        filters["psu_keyword"] = f"{psu_val}W"
+
+    # Nhận diện Mainboard
+    _MAIN_DETECT = re.compile(r'\b(?:mainboard|main|bo m[ạa]ch ch[ủu])\s+([a-z0-9\-]+)\b', re.I)
+    m_main = _MAIN_DETECT.search(query)
+    if m_main:
+        filters["main_keyword"] = m_main.group(1).upper().strip()
+
     synonyms = {
         r'\bmáy tính để bàn\b': 'PC desktop máy tính để bàn',
         r'\bmáy tính\b': 'PC máy tính',
@@ -216,7 +242,7 @@ def search(req: SearchRequest):
         query_filter=qdrant_filter,
         limit=req.top_k,
         with_payload=False,
-        score_threshold=0.6,   # Bỏ kết quả có độ tương đồng thấp (gibberish, ký tự lạ, sản phẩm không tồn tại)
+        score_threshold=0.6,   
     )
     results = [{"id": hit.id, "score": round(hit.score, 4)} for hit in hits]
 
@@ -314,13 +340,11 @@ class AiBuildRequest(BaseModel):
 
 from ai_builder import find_best_pc_build
 
-# Patterns to detect specific component model mentions in a query
-# CPU patterns: i3/i5/i7/i9 + model, Ryzen X XXXX
+
 _CPU_PATTERN = re.compile(
     r'\b(i[3579]-?\s*\d{4,5}[A-Z]*|ryzen\s*[359]\s*\d{4,5}[A-Z]*|core\s*i[3579]-?\s*\d{4,5}[A-Z]*)\b',
     re.I
 )
-# VGA patterns: RTX/GTX/RX + model
 _VGA_PATTERN = re.compile(
     r'\b(rtx\s*\d{3,4}(?:\s*ti)?(?:\s*super)?|gtx\s*\d{3,4}(?:\s*ti)?|rx\s*\d{3,4}(?:\s*xt)?)\b',
     re.I
@@ -354,7 +378,7 @@ def ai_build_pc(req: AiBuildRequest):
     query = req.query
     parsed = parse_query(query)
     
-    # Extract EXACT budget from query to avoid +5M tolerance from search parser
+    
     m = re.search(r'(\d+)\s*(?:tri[eệ]u|tr)', query, re.I)
     if m:
         budget = int(m.group(1)) * 1_000_000
@@ -367,7 +391,6 @@ def ai_build_pc(req: AiBuildRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    # Detect explicitly mentioned CPU/VGA models
     pinned_cpu_kw = _CPU_PATTERN.search(query)
     pinned_vga_kw = _VGA_PATTERN.search(query)
     
@@ -388,13 +411,11 @@ def ai_build_pc(req: AiBuildRequest):
                 query_filter=qdrant_filter,
                 limit=15
             )
-            # Include the numeric DB id (Qdrant point id) in every payload so Laravel
-            # can look up the fresh price from MySQL instead of relying on stale Qdrant data.
             semantic_results = [{'id_sanpham': h.id, **h.payload} for h in res]
         except Exception:
             semantic_results = []
 
-        # If user mentioned a specific CPU/VGA model, pin it to the TOP of results
+
         if comp_type == "CPU" and pinned_cpu_kw:
             kw = pinned_cpu_kw.group(1)
             pinned_results = _search_by_keyword(kw, "CPU")
@@ -411,12 +432,12 @@ def ai_build_pc(req: AiBuildRequest):
 
         components_by_type[comp_type] = semantic_results
 
-    # Build the pinned dict to tell ai_builder which components are explicitly requested
+    
     pinned_for_builder = {}
     if pinned_cpu_kw and components_by_type.get('CPU'):
-        pinned_for_builder['CPU'] = 1   # first CPU in list is pinned
+        pinned_for_builder['CPU'] = 1   
     if pinned_vga_kw and components_by_type.get('VGA'):
-        pinned_for_builder['VGA'] = 1   # first VGA in list is pinned
+        pinned_for_builder['VGA'] = 1   
 
     best_build = find_best_pc_build(budget, components_by_type, pinned=pinned_for_builder)
     
