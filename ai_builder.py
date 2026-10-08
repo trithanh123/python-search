@@ -5,18 +5,8 @@ def get_psu_watt(psu):
     return int(m.group(1)) if m else 0
 
 def find_best_pc_build(budget: int, components_by_type: dict, pinned: dict = None):
-    """
-    Find the best PC build within budget.
-    
-    Args:
-        budget: Maximum budget in VND.
-        components_by_type: Dict of component type -> list of component dicts (sorted by semantic relevance).
-        pinned: Dict of component type -> count of pinned components at top of list.
-                e.g. {'CPU': 1, 'VGA': 1} means first CPU and first VGA are explicitly requested by user.
-    """
     if pinned is None:
         pinned = {}
-
     cpus  = components_by_type.get('CPU',      [])[:5]
     mains = components_by_type.get('Mainboard',[])[:15]
     vgas  = components_by_type.get('VGA',      [])[:5]
@@ -29,7 +19,6 @@ def find_best_pc_build(budget: int, components_by_type: dict, pinned: dict = Non
     pinned_vga = pinned.get('VGA', 0)
 
     def _gather_builds(cpu_candidates, vga_candidates):
-        """Collect all valid builds and return sorted by budget utilization (closest first)."""
         results = []
         for vga in vga_candidates:
             vga_w_str = vga.get('specifications', {}).get('power', '0W')
@@ -65,9 +54,7 @@ def find_best_pc_build(budget: int, components_by_type: dict, pinned: dict = Non
 
         results.sort(key=lambda x: x['diff'])
         return results
-
-    # Build search phases based on which components are pinned.
-    # Priority: honour user-specified components first, then loosen constraints if no match found.
+    
     if pinned_cpu and pinned_vga:
         phases = [
             (cpus[:pinned_cpu], vgas[:pinned_vga]),  # both pinned

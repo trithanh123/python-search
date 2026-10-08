@@ -27,7 +27,7 @@ genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 def get_embedding(text: str, task_type: str = "retrieval_document") -> list[float]:
     try:
         result = genai.embed_content(
-            model="models/text-embedding-004",
+            model="models/gemini-embedding-001",
             content=text,
             task_type=task_type,
             output_dimensionality=768
@@ -40,7 +40,7 @@ def get_embedding(text: str, task_type: str = "retrieval_document") -> list[floa
 def get_embedding_batch(texts: list[str]) -> list[list[float]]:
     try:
         result = genai.embed_content(
-            model="models/text-embedding-004",
+            model="models/gemini-embedding-001",
             content=texts,
             task_type="retrieval_document",
             output_dimensionality=768

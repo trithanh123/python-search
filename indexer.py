@@ -6,18 +6,24 @@ import psycopg2.extras
 from dotenv import load_dotenv
 os.environ["USE_TF"] = "0"
 os.environ["USE_TORCH"] = "1"
-from sentence_transformers import SentenceTransformer
+import google.generativeai as genai
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
 load_dotenv()
 QDRANT_URL        = os.getenv("QDRANT_URL")
 QDRANT_API_KEY    = os.getenv("QDRANT_API_KEY")
 POSTGRES_DB_URL   = os.getenv("POSTGRES_DB_URL")
+GEMINI_API_KEY    = os.getenv("GEMINI_API_KEY")
 COLLECTION        = os.getenv("QDRANT_COLLECTION", "san_pham")
 VECTOR_SIZE       = int(os.getenv("VECTOR_SIZE", 768))
-print(" Đang load model vietnamese-sbert...")
-model = SentenceTransformer("keepitreal/vietnamese-sbert")
-print(" Model đã sẵn sàng!")
+
+if not GEMINI_API_KEY:
+    print(" LỖI: Chưa có GEMINI_API_KEY trong file .env!")
+    exit(1)
+
+print(" Đang cấu hình Gemini API...")
+genai.configure(api_key=GEMINI_API_KEY)
+print(" Cấu hình thành công!")
 
 def create_product_text(product: dict) -> str:
     specs = product.get("specifications") or {}
@@ -104,8 +110,30 @@ def index_all():
         return
     print("  Đang tạo văn bản mô tả sản phẩm...")
     texts = [create_product_text(p) for p in products]
-    print(f" Đang tạo vector bằng vietnamese-sbert (batch {len(texts)} sản phẩm)...")
-    vectors = model.encode(texts, batch_size=32, show_progress_bar=True)
+    print(f" Đang tạo vector bằng Gemini API ({len(texts)} sản phẩm)...")
+    vectors = []
+    import time
+    from google.api_core.exceptions import ResourceExhausted
+
+    BATCH_GEMINI = 50
+    for i in range(0, len(texts), BATCH_GEMINI):
+        batch_texts = texts[i:i + BATCH_GEMINI]
+        success = False
+        while not success:
+            try:
+                res = genai.embed_content(
+                    model="models/gemini-embedding-001",
+                    content=batch_texts,
+                    task_type="retrieval_document",
+                    output_dimensionality=VECTOR_SIZE
+                )
+                vectors.extend(res['embedding'])
+                print(f"   Đã encode {min(i + BATCH_GEMINI, len(texts))}/{len(texts)} sản phẩm")
+                success = True
+                time.sleep(2)
+            except ResourceExhausted:
+                print("   ⏳ Đụng rate limit của Gemini! Chờ 35 giây rồi thử lại...")
+                time.sleep(35)
     print(" Đã tạo xong tất cả vector!")
     print("⬆ Đang đẩy dữ liệu vào Qdrant Cloud...")
     points = []
@@ -120,7 +148,7 @@ def index_all():
         points.append(
             PointStruct(
                 id=int(product["id_sanpham"]),
-                vector=vector.tolist(),
+                vector=vector,
                 payload={
             
                     "id_sanpham"   : int(product["id_sanpham"]),
