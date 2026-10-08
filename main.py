@@ -199,6 +199,11 @@ def make_product_text(data: dict) -> str:
 @app.get("/health")
 @app.head("/health")
 def health():
+    try:
+        # Ping Qdrant để giữ connection pool luôn sống khi UptimeRobot gọi
+        qdrant.get_collections()
+    except Exception:
+        pass
     return {"status": "ok", "service": "ToiYeuPC Search"}
 @app.post("/search")
 def search(req: SearchRequest):
@@ -212,14 +217,31 @@ def search(req: SearchRequest):
         raise HTTPException(status_code=500, detail=str(e))
     qdrant_filter = build_qdrant_filter(filters, req.branch_id)
 
-    hits = qdrant.search(
-        collection_name=COLLECTION,
-        query_vector=query_vector,
-        query_filter=qdrant_filter,
-        limit=req.top_k,
-        with_payload=False,
-        score_threshold=0.6,   
-    )
+    try:
+        hits = qdrant.search(
+            collection_name=COLLECTION,
+            query_vector=query_vector,
+            query_filter=qdrant_filter,
+            limit=req.top_k,
+            with_payload=False,
+            score_threshold=0.6,   
+        )
+    except Exception as e:
+        if "104" in str(e) or "reset" in str(e).lower() or "timeout" in str(e).lower():
+            # Tái tạo lại connection nếu bị Qdrant Cloud ngắt do idle quá lâu
+            global qdrant
+            qdrant = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+            hits = qdrant.search(
+                collection_name=COLLECTION,
+                query_vector=query_vector,
+                query_filter=qdrant_filter,
+                limit=req.top_k,
+                with_payload=False,
+                score_threshold=0.6,   
+            )
+        else:
+            raise HTTPException(status_code=500, detail=f"Qdrant Error: {str(e)}")
+
     results = [{"id": hit.id, "score": round(hit.score, 4)} for hit in hits]
 
     return {
