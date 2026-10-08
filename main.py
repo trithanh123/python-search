@@ -27,7 +27,7 @@ genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 def get_embedding(text: str, task_type: str = "retrieval_document") -> list[float]:
     try:
         result = genai.embed_content(
-            model="models/gemini-embedding-2",
+            model="models/text-embedding-004",
             content=text,
             task_type=task_type,
             output_dimensionality=768
@@ -40,7 +40,7 @@ def get_embedding(text: str, task_type: str = "retrieval_document") -> list[floa
 def get_embedding_batch(texts: list[str]) -> list[list[float]]:
     try:
         result = genai.embed_content(
-            model="models/gemini-embedding-2",
+            model="models/text-embedding-004",
             content=texts,
             task_type="retrieval_document",
             output_dimensionality=768
@@ -74,33 +74,23 @@ class UpsertRequest(BaseModel):
 def parse_query(query: str) -> dict:
     filters  = {}
     semantic = query
-
-   
     UNIT = r'(?:tri[eệ]u|tr(?![a-zA-ZàáâãèéêìíòóôõùúýăđơưÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚÝĂĐƠƯàáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ]))'
-
-  
     pattern_between = r'(?:từ|tu)?\s*(\d+)\s*(?:đến|den|-|tới|toi)\s*(\d+)\s*' + UNIT
     m_between = re.search(pattern_between, query, re.I)
     if m_between:
         filters["gia_gte"] = int(m_between.group(1)) * 1_000_000
         filters["gia_lte"] = int(m_between.group(2)) * 1_000_000
         semantic = re.sub(pattern_between, "", semantic, flags=re.I).strip()
-
-   
     pattern_lte = r'(?:gia\s*)?(?:duoi|toi da|khong qua|dưới|tối đa|không quá)\s*(\d+)\s*' + UNIT
     m = re.search(pattern_lte, query, re.I)
     if m and "gia_lte" not in filters:
         filters["gia_lte"] = int(m.group(1)) * 1_000_000
         semantic = re.sub(pattern_lte, "", semantic, flags=re.I).strip()
-
-   
     pattern_gte = r'(?:gia\s*)?(?:tren|tu|toi thieu|trên|từ|tối thiểu)\s*(\d+)\s*' + UNIT
     m = re.search(pattern_gte, query, re.I)
     if m:
         filters["gia_gte"] = int(m.group(1)) * 1_000_000
         semantic = re.sub(pattern_gte, "", semantic, flags=re.I).strip()
-
-
     if "gia_lte" not in filters and "gia_gte" not in filters:
         pattern_range = r'(?:gia\s*|khoang\s*|giá\s*|khoảng\s*)(\d+)\s*(?:' + UNIT + r'|củ)'
         m = re.search(pattern_range, query, re.I)
@@ -109,7 +99,6 @@ def parse_query(query: str) -> dict:
             filters["gia_gte"] = max(0, center - 5_000_000)
             filters["gia_lte"] = center + 5_000_000
             semantic = re.sub(pattern_range, "", semantic, flags=re.I).strip()
-
     if "gia_lte" not in filters and "gia_gte" not in filters:
         pattern_bare_price = r'(?:giá|gia)\s+(\d+)(?!\s*(?:tri[eệ]u|tr[^a-zA-Z]|\d))'
         m = re.search(pattern_bare_price, query, re.I)
@@ -120,13 +109,11 @@ def parse_query(query: str) -> dict:
                 filters["gia_gte"] = max(0, center - 5_000_000)
                 filters["gia_lte"] = center + 5_000_000
                 semantic = re.sub(pattern_bare_price, "", semantic, flags=re.I).strip()
-
     brands = ["ASUS", "MSI", "Dell", "HP", "Lenovo", "Acer", "Apple", "Gigabyte", "Samsung", "LG"]
     for brand in brands:
         if re.search(brand, query, re.I):
             filters["brand"] = brand
             break
-
     _GPU_DETECT = re.compile(
         r'\b(rtx\s*\d{3,4}(?:\s*ti)?(?:\s*super)?'
         r'|gtx\s*\d{3,4}(?:\s*ti)?'
@@ -137,13 +124,10 @@ def parse_query(query: str) -> dict:
     m_gpu = _GPU_DETECT.search(query)
     if m_gpu:
         filters["gpu_keyword"] = re.sub(r'\s+', ' ', m_gpu.group(1).upper().strip())
-
     _CPU_DETECT = re.compile(r'\b(intel(?:\s*core\s*i[3579])?|amd(?:\s*ryzen\s*[3579])?|core\s*i[3579]|ryzen\s*[3579])\b', re.I)
     m_cpu = _CPU_DETECT.search(query)
     if m_cpu:
         filters["cpu_keyword"] = re.sub(r'\s+', ' ', m_cpu.group(1).upper().strip())
-
-   
     _RAM_DETECT = re.compile(r'\b(?:ram\s*)?(8|16|32|64|128)\s*(?:gb|g)\b|\b(?:ram\s+)(8|16|32|64|128)\b', re.I)
     m_ram = _RAM_DETECT.search(query)
     if m_ram:
@@ -212,15 +196,10 @@ def make_product_text(data: dict) -> str:
         f"Mô tả: {data.get('motasanpham', '')}",
     ]
     return ". ".join(p for p in parts if p).strip()
-
-
-
 @app.get("/health")
 @app.head("/health")
 def health():
     return {"status": "ok", "service": "ToiYeuPC Search"}
-
-
 @app.post("/search")
 def search(req: SearchRequest):
     """Tìm kiếm sản phẩm bằng AI semantic search."""
@@ -249,8 +228,6 @@ def search(req: SearchRequest):
         "filters" : filters,
         "results" : results,
     }
-
-
 @app.post("/upsert")
 def upsert(req: UpsertRequest):
     data   = req.dict()
