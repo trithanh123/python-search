@@ -208,29 +208,19 @@ def health():
 @app.post("/search")
 def search(req: SearchRequest):
     global qdrant
-    """Tìm kiếm sản phẩm bằng AI semantic search."""
-    parsed       = parse_query(req.query)
-    semantic     = parsed["semantic"]
-    filters      = parsed["filters"]
     try:
-        query_vector = get_embedding(semantic, task_type="retrieval_query")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    qdrant_filter = build_qdrant_filter(filters, req.branch_id)
+        parsed       = parse_query(req.query)
+        semantic     = parsed["semantic"]
+        filters      = parsed["filters"]
+        
+        try:
+            query_vector = get_embedding(semantic, task_type="retrieval_query")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+            
+        qdrant_filter = build_qdrant_filter(filters, req.branch_id)
 
-    try:
-        hits = qdrant.search(
-            collection_name=COLLECTION,
-            query_vector=query_vector,
-            query_filter=qdrant_filter,
-            limit=req.top_k,
-            with_payload=False,
-            score_threshold=0.6,   
-        )
-    except Exception as e:
-        if "104" in str(e) or "reset" in str(e).lower() or "timeout" in str(e).lower():
-            # Tái tạo lại connection nếu bị Qdrant Cloud ngắt do idle quá lâu
-            qdrant = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+        try:
             hits = qdrant.search(
                 collection_name=COLLECTION,
                 query_vector=query_vector,
@@ -239,17 +229,31 @@ def search(req: SearchRequest):
                 with_payload=False,
                 score_threshold=0.6,   
             )
-        else:
-            raise HTTPException(status_code=500, detail=f"Qdrant Error: {str(e)}")
+        except Exception as e:
+            if "104" in str(e) or "reset" in str(e).lower() or "timeout" in str(e).lower():
+                qdrant = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+                hits = qdrant.search(
+                    collection_name=COLLECTION,
+                    query_vector=query_vector,
+                    query_filter=qdrant_filter,
+                    limit=req.top_k,
+                    with_payload=False,
+                    score_threshold=0.6,   
+                )
+            else:
+                raise HTTPException(status_code=500, detail=f"Qdrant Error: {str(e)}")
 
-    results = [{"id": hit.id, "score": round(hit.score, 4)} for hit in hits]
+        results = [{"id": hit.id, "score": round(hit.score, 4)} for hit in hits]
 
-    return {
-        "query"   : req.query,
-        "semantic": semantic,
-        "filters" : filters,
-        "results" : results,
-    }
+        return {
+            "query"   : req.query,
+            "semantic": semantic,
+            "filters" : filters,
+            "results" : results,
+        }
+    except Exception as main_e:
+        import traceback
+        raise HTTPException(status_code=500, detail=f"UNHANDLED ERROR: {str(main_e)} | Trace: {traceback.format_exc()}")
 @app.post("/upsert")
 def upsert(req: UpsertRequest):
     data   = req.dict()
