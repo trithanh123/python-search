@@ -199,12 +199,22 @@ def make_product_text(data: dict) -> str:
 @app.get("/health")
 @app.head("/health")
 def health():
+    import os
+    q_url = os.getenv("QDRANT_URL", "")
+    q_key = os.getenv("QDRANT_API_KEY", "")
     try:
-        # Ping Qdrant để giữ connection pool luôn sống khi UptimeRobot gọi
         qdrant.get_collections()
-    except Exception:
-        pass
-    return {"status": "ok", "service": "ToiYeuPC Search"}
+        q_status = "ok"
+    except Exception as e:
+        q_status = f"error: {str(e)}"
+    
+    return {
+        "status": "ok", 
+        "service": "ToiYeuPC Search",
+        "qdrant_url": q_url,
+        "qdrant_key_len": len(q_key),
+        "qdrant_conn_status": q_status
+    }
 @app.post("/search")
 def search(req: SearchRequest):
     global qdrant
