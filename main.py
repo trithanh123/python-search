@@ -207,6 +207,7 @@ def health():
     return {"status": "ok", "service": "ToiYeuPC Search"}
 @app.post("/search")
 def search(req: SearchRequest):
+    global qdrant
     """Tìm kiếm sản phẩm bằng AI semantic search."""
     parsed       = parse_query(req.query)
     semantic     = parsed["semantic"]
@@ -229,7 +230,6 @@ def search(req: SearchRequest):
     except Exception as e:
         if "104" in str(e) or "reset" in str(e).lower() or "timeout" in str(e).lower():
             # Tái tạo lại connection nếu bị Qdrant Cloud ngắt do idle quá lâu
-            global qdrant
             qdrant = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
             hits = qdrant.search(
                 collection_name=COLLECTION,
